@@ -5,6 +5,8 @@ it is of basic type. The apk must have set the `android:debuggable="true"` flag.
 
 By default it will trace all functions which match(prefixed) `package_name`.
 
+[![asciicast](https://asciinema.org/a/383511.svg)](https://asciinema.org/a/383511)
+
 # Updates
 (07-02-2020 add native function highlighting)
 
