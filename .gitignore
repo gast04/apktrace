@@ -1,0 +1,10 @@
+.vscode/
+JdwpHandler/__pycache__/
+Utils/__pycache__/
+JdwpHandler/jdwp_client/__pycache__/
+JdwpHandler/jdwp_client/Connection/__pycache__/
+
+TestApks/
+trace.out
+
+rust/target/
