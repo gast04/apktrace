@@ -51,6 +51,8 @@ In action:
 
 # TODO
 
+* there is a known Bug in the methodID size in the Rust implementation
+  I wonder how this ever worked^^
 * move JdwpHandler in its own repository and use it as a git submodule, to
 allow easier usage also for other repositories, for example jdb++
 * implement the `--watchlist` argument (not possible see issue)
