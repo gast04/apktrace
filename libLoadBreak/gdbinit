@@ -1,0 +1,31 @@
+#add-auto-load-safe-path /home/niku/RevAndroid/goldfish/scripts/gdb/vmlinux-gdb.py
+
+#source /home/niku/git-repos/peda/peda.py
+# source /home/niku/git-repos/peda-arm/peda-arm.py
+
+# the page continue reading feature, bad for python scripting, prevents fetching
+# all output of command
+set pagination off
+
+set auto-solib-add on
+set solib-search-path /home/niku/Project/GdbAndroid/demo3/lib/x86
+set sysroot /home/niku/Project/GdbAndroid/android_libs/
+
+target remote localhost:12345
+sharedlibrary linker
+
+#break* __dl_notify_gdb_of_load
+
+break* __dl_notify_gdb_of_load
+  commands
+  print "BP HIT: __dl_notify_gdb_of_load"
+  #x/s *(*((int*)($esp+4))+4)
+  #print "Happy loading"
+
+  source /home/niku/smaple.py
+
+  # to get out of break
+  continue
+end
+
+# continue
