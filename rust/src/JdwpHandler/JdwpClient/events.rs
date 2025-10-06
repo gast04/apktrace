@@ -52,7 +52,7 @@ pub fn parse_event_response(buffer: &[u8], obj_uid_size: u32) -> Response {
 
   let event_cnt = utils::slice_to_u32(&buffer[1..5]);
   if event_cnt != 1 {
-    println!("More than one event, not implemented!");
+    println!("More than one event, not implemented! {}", event_cnt);
     return response;
   }
 

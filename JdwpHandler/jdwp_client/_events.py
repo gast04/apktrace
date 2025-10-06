@@ -1,10 +1,7 @@
 import struct
+import sys
 from ._protvars import *
 from ._utils import *
-
-'''
-  TODO: documentation about how events look
-'''
 
 def send_event(self, eventCode, *args):
   data = b""

@@ -1,0 +1,29 @@
+repos:
+- repo: https://github.com/pre-commit/pre-commit-hooks
+  rev: v4.6.0
+  hooks:
+  - id: trailing-whitespace
+  - id: check-merge-conflict
+  - id: check-case-conflict
+  - id: end-of-file-fixer
+  - id: debug-statements
+  - id: detect-private-key
+
+- repo: https://github.com/codespell-project/codespell
+  rev: v2.2.6
+  hooks:
+  - id: codespell
+    exclude: '.*.ipynb'
+    args:
+    - -L ist
+    - --builtins clear,rare,informal,usage
+
+- repo: https://github.com/astral-sh/ruff-pre-commit
+  rev: v0.4.3
+  hooks:
+    # Run the linter.
+    - id: ruff
+      files: '.*\.(ipynb|py)$'
+    # Run the formatter.
+    - id: ruff-format
+      files: '.*\.(ipynb|py)$'

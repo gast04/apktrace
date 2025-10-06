@@ -10,7 +10,11 @@ version_formats:List[Tuple[str, str]] = [
 ]
 
 def dbgPrint(msg):
+  if isinstance(msg, bytes):
+    msg = msg.decode("utf-8")
   print(colored("[JdwpClient] ", "yellow") + msg)
 
 def dbgError(msg):
+  if isinstance(msg, bytes):
+    msg = msg.decode("utf-8")
   print(colored("[JdwpClient] ERROR: ", "red") + msg)

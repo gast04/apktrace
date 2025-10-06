@@ -1,4 +1,4 @@
-import time
+import logging
 import sys
 import struct
 import fuckpy3
@@ -8,6 +8,14 @@ from ._utils import *
 from ._protvars import *
 # create_packet,  read_reply
 
+
+from Utils.clogger import create_logger
+
+logger = create_logger(
+  logger_name="JDWPClient",
+  prefix=colored("JDWPClient", 'green'),
+  loglevel=logging.DEBUG
+)
 
 ################################################################################
 # JDWP client class
@@ -23,9 +31,10 @@ def start(self):
   self.fetchAllClasses()   # get all initial classes
 
 def handshake(self):
+  logger.debug("sending handshake")
   self.con.rawSend(HANDSHAKE)
   if self.con.rawRead(len(HANDSHAKE)) != HANDSHAKE:
-    dbgError("JDWP-Handshake failed")
+    logger.error("JDWP-Handshake failed, maybe running Android Studio Instance?")
     sys.exit(-1)
 
 def leave(self):
@@ -37,6 +46,7 @@ def version(self):
   return "%s - %s" % (self.vmName, self.vmVersion)
 
 def getVersion(self):
+  logger.debug("sending version")
   self.con.sendPacket(VERSION_SIG)
   buf = self.con.readReplyBuf()
 
@@ -47,10 +57,8 @@ def getVersion(self):
 
   # print out JDWP version
   for line in self.description.split(b"\n"):
-    dbgPrint(line.str())
+    logger.debug(line.str())
   return
-
-
 
 def getBpValues(self):
   return self.bp_class_id, self.bp_method_id, self.bp_thread_id, self.bp_location
@@ -93,10 +101,10 @@ def parse_entries(self, buf, formats, explicit=True):
           buf = struct.unpack(">I", buf[index+5:index+9])
           index=0
       else:
-        print("Error")
+        logger.error("parse_entries failed, unknown format")
         sys.exit(1)
 
-    entries.append( data )
+    entries.append(data)
 
   return entries
 
@@ -120,12 +128,13 @@ def unformat(self, fmt, value):
 def idsizes(self):
   self.con.sendPacket(IDSIZES_SIG)
   buf = self.con.readReplyBuf()
-  formats = [ ("I", "fieldIDSize"),
-              ("I", "methodIDSize"),
-              ("I", "objectIDSize"),
-              ("I", "referenceTypeIDSize"),
-              ("I", "frameIDSize")
-            ]
+  formats = [
+    ("I", "fieldIDSize"),
+    ("I", "methodIDSize"),
+    ("I", "objectIDSize"),
+    ("I", "referenceTypeIDSize"),
+    ("I", "frameIDSize")
+  ]
 
   # add id sizes as attribute to JdwpClient class
   for entry in self.parse_entries(buf, formats, False):

@@ -1,8 +1,16 @@
+import logging
 import struct
 import time
+from termcolor import colored
 from typing import Tuple
 
-from .utils import dbgPrint, dbgError
+from Utils.clogger import create_logger
+
+logger = create_logger(
+  logger_name="JDWPConnection",
+  prefix=colored("JDWPConnection", 'purple'),
+  loglevel=logging.DEBUG
+)
 
 # JDWP ERROR codes
 INVALID_SLOT              = 35
@@ -54,11 +62,12 @@ def createPacket(self, cmdsig: Tuple[int, int], data: bytes):
 def _readReplyHeader(socket) -> str:
   while True:
     header = socket.recv(11)
+    logger.debug(f"Raw header: {header}")
     if len(header) == 11:
       return header
 
     # only happens in error case
-    dbgPrint("Waiting for reply...")
+    logger.debug("Waiting for reply...")
     time.sleep(0.1)
 
 def waitReply(self):
@@ -80,21 +89,24 @@ def readReplyBuf(self):
   if flags == '\x80': # REPLY_PACKET_TYPE
     if errcode:
       if errcode == INVALID_EVENT_TYPE:
-        dbgError("102 - INVALID_EVENT_TYPE")
+        logger.error("102 - INVALID_EVENT_TYPE")
       elif errcode == INVALID_SLOT:
-        dbgError("35 - INVALID_SLOT")
+        logger.error("35 - INVALID_SLOT")
       elif errcode == NATIVE_METHOD:
-        dbgError("511 - NATIVE METHOD")
+        logger.error("511 - NATIVE METHOD")
       else:
-        dbgError("Unhandled errorcode {}".format(errcode))
+        logger.error("Unhandled errorcode {}".format(errcode))
       return b""
 
   buf = b""
   while len(buf) + 11 < pktlen:
-    data = self.socket.recv(1024)
+
+    # read expected packet len
+    # NOTE: this might backfire
+    data = self.socket.recv(pktlen - 11 - len(buf))
     if len(data):
       buf += data
     else:
-      time.sleep(1)
+      time.sleep(0.2)
 
   return buf

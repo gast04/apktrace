@@ -7,6 +7,11 @@ from JdwpHandler.jdwp_client import JdwpClient
 #from JdwpHandler.jdwp_protvars import *
 #import JdwpHandler.jdwp_utils as jdwp_utils
 
+
+from Utils.clogger import create_logger
+
+logger = create_logger(logger_name="JDWP", prefix=colored("JDWP", 'yellow'))
+
 jdwp_cli = None
 init_con: bool = False
 debug_mode: bool = True
@@ -22,14 +27,10 @@ THREAD_COLORS = [
 color_id = 0
 thread_colors = {}
 
-def _dbgPrint(msg):
-  if debug_mode:
-    print("[JdwpHandler] " + msg)
-
 def initConnection(target: str = "127.0.0.1", port: int = 33333):
   global jdwp_cli, init_con
   if init_con:
-    _dbgPrint("Already connected!")
+    logger.debug("Already connected!")
     return
 
   jdwp_cli = JdwpClient(target, port)
@@ -38,7 +39,7 @@ def initConnection(target: str = "127.0.0.1", port: int = 33333):
 
 def breakOnMethodEntry(use_watch=True):
   if not init_con:
-    _dbgPrint("NOT connected!")
+    logger.debug("NOT connected!")
     return
 
   # create method entry break event
@@ -46,7 +47,7 @@ def breakOnMethodEntry(use_watch=True):
 
 def breakOnMethodExitWRV(use_watch=True):
   if not init_con:
-    _dbgPrint("NOT connected!")
+    logger.debug("NOT connected!")
     return
 
   # create method exit with return value event
@@ -54,7 +55,7 @@ def breakOnMethodExitWRV(use_watch=True):
 
 def breakOnClassPrepare(classname: str):
   if not init_con:
-    _dbgPrint("NOT connected!")
+    logger.debug("NOT connected!")
     return
 
   # create class prepare event
@@ -74,7 +75,7 @@ def waitForEvent(entry_id: int, exit_id: int):
   # wait for event
   buf = jdwp_cli.wait_for_event()
   req_id, thread_id, ret_val = jdwp_cli.parse_event_response(buf)
-  # _dbgPrint("Request ID parsed: " + str(req_id))
+  # logger.debug("Request ID parsed: " + str(req_id))
 
   # fetch stop values, TODO: convert location in class type
   class_id, method_id, thread_id, location = jdwp_cli.getBpValues()
