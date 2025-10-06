@@ -1,0 +1,11 @@
+[project]
+name = "apktrace"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "forbiddenfruit>=0.1.4",
+    "fuckpy3>=1.0",
+    "termcolor>=3.1.0",
+]

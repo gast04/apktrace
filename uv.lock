@@ -1,0 +1,41 @@
+version = 1
+revision = 3
+requires-python = ">=3.9"
+
+[[package]]
+name = "apktrace"
+version = "0.1.0"
+source = { virtual = "." }
+dependencies = [
+    { name = "forbiddenfruit" },
+    { name = "fuckpy3" },
+    { name = "termcolor" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "forbiddenfruit", specifier = ">=0.1.4" },
+    { name = "fuckpy3", specifier = ">=1.0" },
+    { name = "termcolor", specifier = ">=3.1.0" },
+]
+
+[[package]]
+name = "forbiddenfruit"
+version = "0.1.4"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/e6/79/d4f20e91327c98096d605646bdc6a5ffedae820f38d378d3515c42ec5e60/forbiddenfruit-0.1.4.tar.gz", hash = "sha256:e3f7e66561a29ae129aac139a85d610dbf3dd896128187ed5454b6421f624253", size = 43756, upload-time = "2021-01-16T21:03:35.401Z" }
+
+[[package]]
+name = "fuckpy3"
+version = "1.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/49/49/7009e564dc30c00c1e2fec54a418e8e191ba311262991d498c88be3c4a35/fuckpy3-1.0.tar.gz", hash = "sha256:956b6063ef966686b2be088789ab43f468be4f9b2dee25ab8f087a77d531fa59", size = 1438, upload-time = "2019-05-09T18:52:27.745Z" }
+
+[[package]]
+name = "termcolor"
+version = "3.1.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/ca/6c/3d75c196ac07ac8749600b60b03f4f6094d54e132c4d94ebac6ee0e0add0/termcolor-3.1.0.tar.gz", hash = "sha256:6a6dd7fbee581909eeec6a756cff1d7f7c376063b14e4a298dc4980309e55970", size = 14324, upload-time = "2025-04-30T11:37:53.791Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/4f/bd/de8d508070629b6d84a30d01d57e4a65c69aa7f5abe7560b8fad3b50ea59/termcolor-3.1.0-py3-none-any.whl", hash = "sha256:591dd26b5c2ce03b9e43f391264626557873ce1d379019786f99b0c2bee140aa", size = 7684, upload-time = "2025-04-30T11:37:52.382Z" },
+]
