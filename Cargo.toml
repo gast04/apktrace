@@ -9,5 +9,6 @@ edition = "2018"
 
 [dependencies]
 colored = "2"
-chrono = "0.4.19"
+chrono = "0.4"
 argparse = "0.2.2"
+ctrlc = "3.4"
