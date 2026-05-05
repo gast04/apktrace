@@ -7,4 +7,4 @@ JdwpHandler/jdwp_client/Connection/__pycache__/
 TestApks/
 trace.out
 
-rust/target/
+target/

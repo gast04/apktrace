@@ -1,7 +1,5 @@
-#[path = "protocol_vars.rs"]
-mod pvars;
-#[path = "utils.rs"]
-mod utils;
+use super::pvars;
+use super::utils;
 
 use crate::jdwp_handler::jdwp_client::connection::Connection as Conn;
 use core::convert::TryInto;

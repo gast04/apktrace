@@ -1,5 +1,6 @@
 use std::process::Command;
 
+#[allow(dead_code)]
 pub fn start_application(package_id: &String, activity: &String) -> Result<bool, String> {
     println!("starting application");
 

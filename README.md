@@ -1,58 +1,121 @@
 # apktrace
 
-Trace all method entries and exits, the exit also prints the return value, if
-it is of basic type. The apk must have set the `android:debuggable="true"` flag.
+Trace all method entries and exits of a running Android/Java application via JDWP. On method exit, the duration is printed alongside an indented call tree showing nesting depth. On Ctrl+C, a performance summary is printed with self-time, total-time, call counts, and hottest methods.
 
-By default it will trace all functions which match(prefixed) `package_name`.
+The app must have `android:debuggable="true"` set and be already running. Attach by PID or package name.
 
-[![asciicast](https://asciinema.org/a/383511.svg)](https://asciinema.org/a/383511)
+## Build
 
-# Updates
-(07-02-2020 add native function highlighting)
-
-# Usage
 ```
->> python apktrace.py --help
-usage: apktrace.py [-h] [-w <filename>] [-c] [-d] [--version]
-                   package_name activity
+cargo build --release
+```
 
-Trace APK files easily
+The binary is `target/release/apktrace`.
+
+## Usage
+
+```
+>> apktrace --help
+Attach to a running Android/Java application via JDWP to trace method entry/exit with timing
+
+Usage:
+  apktrace <pid|package> [OPTIONS]
+  apktrace -l
 
 positional arguments:
-  package_name          Package Name used to start Application
-  activity              start activity of the Application
+  target                Process PID or package name (e.g., 12345 or com.example.app)
 
 optional arguments:
-  -h, --help            show this help message and exit
-  -w <filename>, --watchlist <filename>
-                        File containing classes to watch, (class per line)
-  -c, --clear           Clear APK before start
-  -d, --debug           Verbose mode
-  -n, --native          Break on native method entry
-  --version             Print apktrace version
+  -c, --class <pattern> Class pattern to trace (e.g., 'com.myapp.*')
+  -p, --port <port>     Local TCP port for JDWP forwarding (default: 33333)
+  -o, --output <file>   Output file for trace log (default: stdout)
+  --verbose             Enable verbose output
+  -l, --list            List debuggable processes
+  -v, --version         Show version
 ```
 
-In action:
+## Workflow
+
+1. Start the app on device in debug mode
+2. Find the PID (or use package name directly)
+3. Run `apktrace`
+
 ```
->> python apktrace.py -d com.example.firsttestapp .MainActivity
-[apktrace] LOG   : start CMD "adb shell am start -D -n com.example.firsttestapp/.MainActivity"
-[apktrace] LOG   : forward CMD   "adb forward tcp:33333 jdwp:14856"
-[00:12:33-057312] Method Entry, Thread: 10635 [main], Lcom/example/firsttestapp/MainActivity; -> <init>()V, 
-[00:12:33-103480] Method Exit,  Thread: 10635 [main], Lcom/example/firsttestapp/MainActivity; -> <init>()V, Retval: 0
-[00:12:33-125597] Method Entry, Thread: 10635 [main], Lcom/example/firsttestapp/MainActivity; -> onCreate(Landroid/os/Bundle;)V, 
-[00:12:33-174525] Method Entry, Thread: 10635 [main], Lcom/example/firsttestapp/MainActivity; -> calcOffset(IILjava/lang/String;)I, 
-[00:12:33-175951] Method Exit,  Thread: 10635 [main], Lcom/example/firsttestapp/MainActivity; -> calcOffset(IILjava/lang/String;)I, Retval: 325
-[00:12:33-224984] Method Entry, Thread: 10635 [main], Lcom/example/firsttestapp/PinHandling; -> <init>(Ljava/io/File;)V, 
-[00:12:33-226337] Method Exit,  Thread: 10635 [main], Lcom/example/firsttestapp/PinHandling; -> <init>(Ljava/io/File;)V, Retval: 0
-[00:12:33-227446] Method Entry, Thread: 10635 [main], Lcom/example/firsttestapp/PinHandling; -> checkIfPinExists()Z, 
-[00:12:33-230958] Method Exit,  Thread: 10635 [main], Lcom/example/firsttestapp/PinHandling; -> checkIfPinExists()Z, Retval: 1
-[00:12:34-578716] Method Exit,  Thread: 10635 [main], Lcom/example/firsttestapp/MainActivity; -> onCreate(Landroid/os/Bundle;)V, Retval: 0
+# List all debuggable processes
+>> apktrace -l
+Debuggable processes:
+       22319  com.example.app
+
+# Attach by package name, trace all classes
+>> apktrace com.example.app
+
+# Attach by PID, filter to specific package classes only
+>> apktrace 22319 -c 'Lcom/example/app/*'
+
+# Save trace to file for later analysis
+>> apktrace com.example.app -c 'Lcom/example/app/*' -o trace.out
 ```
 
-# TODO
+## Output format
 
-* there is a known Bug in the methodID size in the Rust implementation
-  I wonder how this ever worked^^
-* move JdwpHandler in its own repository and use it as a git submodule, to
-allow easier usage also for other repositories, for example jdb++
-* implement the `--watchlist` argument (not possible see issue)
+Each line shows timestamp, direction (`>>` entry / `<<` exit), thread name and ID, native flag (`N` for native methods), call depth indentation, class, method, duration, and return value (for non-void exits).
+
+```
+[00:00:00.000] >> [main:22319]   Lcom/example/app/MainActivity; -> onClick(Landroid/view/View;)V
+[00:00:00.004] >> [main:22319]     Lcom/example/app/MainActivity; -> handleClick(Landroid/view/View;)V
+[00:00:00.007] >> [main:22319]       Lcom/example/app/PinHandling; -> checkIfPinExists()Z
+[00:00:00.009] << [main:22319]       Lcom/example/app/PinHandling; -> checkIfPinExists()Z 2.08ms = 1
+[00:00:00.011] << [main:22319]     Lcom/example/app/MainActivity; -> handleClick(Landroid/view/View;)V 7.12ms
+[00:00:00.015] << [main:22319]   Lcom/example/app/MainActivity; -> onClick(Landroid/view/View;)V 15.34ms
+```
+
+## Performance summary
+
+Press Ctrl+C to stop tracing. A summary is printed showing the top 30 methods by self-time (time in the function itself, excluding callees — equivalent to flamegraph self-time):
+
+```
+══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+ Method Timing Summary
+══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+
+Total events processed: 1842
+Unique methods traced: 47
+
+  Self%      Calls   Self(ms)  Total(ms)    Avg(us)    Max(us)  Method
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  42.3%         12      87.14     157.18       7261      12340  Lcom/example/app/Highwind; -> <clinit>()V
+  18.1%        340      37.22      37.22        109        520  Lkotlin/jvm/internal/Intrinsics; -> checkNotNullParameter(...)V
+   ...
+```
+
+## Trace analysis
+
+The `scripts/analyze_trace.py` script re-analyzes a saved trace file, with additional filtering and sorting options:
+
+```
+>> python scripts/analyze_trace.py trace.out
+>> python scripts/analyze_trace.py trace.out --sort-by total
+>> python scripts/analyze_trace.py trace.out --filter 'com/example/app'
+>> python scripts/analyze_trace.py trace.out --ignore ignore.txt
+>> python scripts/analyze_trace.py trace.out --ignore-pattern 'Lkotlin/-> checkNotNull'
+```
+
+Sort options: `self` (default), `total`, `avg`, `calls`, `max`.
+
+The `ignore.txt` file format:
+```
+# One pattern per line: ClassName -> methodName substring match
+Lkotlin/jvm/internal/Intrinsics; -> checkNotNullParameter
+# Or just a substring to match anywhere in "ClassName -> methodName"
+-> access$
+```
+
+## Prerequisites
+
+- `adb` in PATH
+- Device connected with USB debugging enabled
+- App built with `android:debuggable="true"`
+
+## Known issues
+
+- There is a known bug in the methodID size in the JDWP implementation that may affect some devices

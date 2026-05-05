@@ -1,11 +1,9 @@
-#[path = "protocol_vars.rs"]
-pub mod pvars;
+use super::pvars;
 
 use std::convert::TryInto;
 use std::str;
 
 use crate::jdwp_handler::jdwp_client::connection::Connection as Conn;
-use colored::*;
 
 pub struct IdSizes {
     pub field_id_size: u32,
@@ -65,19 +63,16 @@ use std::collections::HashMap;
 
 pub struct ThreadInfo {
     pub name: String,
-    pub color: u8,
 }
 
 pub struct Threads {
     pub map: HashMap<u64, ThreadInfo>,
-    pub current_color: u8,
 }
 
 impl Threads {
     pub fn new() -> Self {
         Threads {
             map: HashMap::new(),
-            current_color: 0,
         }
     }
 
@@ -86,26 +81,9 @@ impl Threads {
     }
 
     pub fn insert(&mut self, thread_id: u64, name: String) -> &ThreadInfo {
-        let color = self.current_color;
-        self.current_color = (self.current_color + 1) % 5;
-        self.map.insert(thread_id, ThreadInfo { name, color });
+        self.map.insert(thread_id, ThreadInfo { name });
         self.map.get(&thread_id).unwrap()
     }
-}
-
-pub fn thread_str(thread_id: u64, thread_name: String, color: u8) -> String {
-    let mut tstr = format!("[{}: {}]", thread_name, thread_id);
-
-    tstr = match color {
-        0 => tstr.cyan().to_string(),
-        1 => tstr.blue().to_string(),
-        2 => tstr.magenta().to_string(),
-        3 => tstr.yellow().to_string(),
-        4 => tstr.white().to_string(),
-        _ => tstr.truecolor(169, 30, 204).to_string(),
-    };
-
-    return tstr;
 }
 
 pub fn slice_to_u32(slice: &[u8]) -> u32 {
@@ -228,6 +206,7 @@ pub fn parse_version(buffer: &[u8]) -> Result<Version, String> {
 
 static START_TIME: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
 
+#[allow(dead_code)]
 pub fn get_current_time() -> String {
     let start = START_TIME.get_or_init(std::time::Instant::now);
     let elapsed = start.elapsed();

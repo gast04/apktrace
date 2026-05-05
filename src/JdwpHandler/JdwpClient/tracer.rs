@@ -216,13 +216,6 @@ impl Tracer {
         println!("{}: time including all nested calls", "Total".bold());
         println!("{}", "═".repeat(110).cyan());
     }
-
-    pub fn get_hottest_methods(&self, n: usize) -> Vec<&MethodStats> {
-        let mut stats_vec: Vec<&MethodStats> = self.method_stats.values().collect();
-        stats_vec.sort_by(|a, b| b.total_time_us.cmp(&a.total_time_us));
-        stats_vec.truncate(n);
-        stats_vec
-    }
 }
 
 pub fn format_duration(us: u64) -> String {

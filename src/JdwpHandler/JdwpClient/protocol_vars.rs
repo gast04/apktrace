@@ -16,8 +16,7 @@
   the static initializer of an interface.
 */
 
-#[allow(unused_variables)]
-// not sure how this allow works...
+#![allow(dead_code)]
 
 pub const VERSION_SIG: (u8, u8) = (1, 1);
 pub const ALLCLASSES_SIG: (u8, u8) = (1, 3);

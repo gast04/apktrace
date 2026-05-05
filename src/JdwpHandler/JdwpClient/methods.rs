@@ -1,8 +1,5 @@
-#[path = "protocol_vars.rs"]
-pub mod pvars;
-#[path = "utils.rs"]
-mod utils;
-//#[path = "Connection/connection.rs"] mod connection;
+use super::pvars;
+use super::utils;
 
 // chain of modules, starting from root directory
 use crate::jdwp_handler::jdwp_client::connection::Connection as Conn;
@@ -64,6 +61,8 @@ impl Methods {
     pub fn new() -> Self {
         return Methods { vec: Vec::new() };
     }
+
+    #[allow(dead_code)]
     pub fn print(&self) {
         println!("Methods:");
         for m in &self.vec {

@@ -1,7 +1,5 @@
-#[path = "protocol_vars.rs"]
-mod pvars;
-#[path = "utils.rs"]
-mod utils;
+use super::pvars;
+use super::utils;
 
 use crate::jdwp_handler::jdwp_client::connection::Connection as Conn;
 
@@ -20,7 +18,7 @@ impl Class {
             status: 0,
         };
     }
-
+    #[allow(dead_code)]
     pub fn print(&self) {
         println!("Class:");
         println!("  Ref Type Tag: {}", self.ref_type_tag);

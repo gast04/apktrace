@@ -3,6 +3,7 @@ mod jdwp_client;
 
 pub struct JdwpHandler {
     client: jdwp_client::JdwpClient,
+    #[allow(dead_code)]
     verbose: bool,
 }
 
