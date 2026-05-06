@@ -19,6 +19,7 @@ fn main() {
     let mut tcp_port: u64 = 33333;
     let mut list_processes: bool = false;
     let mut output_file: String = "".to_string();
+    let mut backtrace_file: String = "".to_string();
 
     {
         let mut ap = ArgumentParser::new();
@@ -27,7 +28,7 @@ fn main() {
         ap.refer(&mut target).add_argument(
             "target",
             Store,
-            "Process PID or package name (e.g., 12345 or com.example.app)",
+            "Process PID or package name",
         );
 
         ap.refer(&mut class_pattern).add_option(
@@ -46,6 +47,12 @@ fn main() {
             &["-o", "--output"],
             Store,
             "Output file for trace log (default: stdout)",
+        );
+
+        ap.refer(&mut backtrace_file).add_option(
+            &["-b", "--backtrace"],
+            Store,
+            "Output file for backtraces on METHOD_ENTRY events",
         );
 
         ap.refer(&mut verbose)
@@ -118,6 +125,16 @@ fn main() {
             Ok(_) => println!("[apktrace] Logging to: {}", output_file),
             Err(e) => {
                 println!("Error: Could not open output file: {}", e);
+                process::exit(-1);
+            }
+        }
+    }
+
+    if !backtrace_file.is_empty() {
+        match jdwp_handler::set_backtrace_file(&mut handler, &backtrace_file) {
+            Ok(_) => println!("[apktrace] Backtraces to: {}", backtrace_file),
+            Err(e) => {
+                println!("Error: Could not open backtrace file: {}", e);
                 process::exit(-1);
             }
         }

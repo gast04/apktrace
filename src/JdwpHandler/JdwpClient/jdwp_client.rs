@@ -249,6 +249,56 @@ impl JdwpClient {
                     method_display
                 );
                 self.tracer.log(&line);
+
+                if self.tracer.has_backtrace_log() {
+                    if let Ok(frames) = utils::get_thread_frames(
+                        &mut self.con,
+                        self.idsizes.object_id_size,
+                        self.idsizes.reference_type_id_size,
+                        self.idsizes.method_id_size,
+                        self.idsizes.frame_id_size,
+                        event.thread_id,
+                        -1,
+                    ) {
+                        let signature: Vec<(u64, u64)> =
+                            frames.iter().map(|f| (f.class_id, f.method_id)).collect();
+
+                        if self.tracer.is_backtrace_new(signature) {
+                            let mut bt_lines: Vec<String> = Vec::new();
+                            bt_lines.push(format!(
+                                "{} -> {} (thread: {})",
+                                class_name, method_display, thread_name
+                            ));
+
+                            for (i, frame) in frames.iter().enumerate() {
+                                let frame_class = class::get_name_by_id(
+                                    &mut self.con,
+                                    &mut self.classes,
+                                    self.idsizes.reference_type_id_size,
+                                    frame.class_id,
+                                )
+                                .unwrap_or_else(|_| format!("<class:{}>", frame.class_id));
+
+                                let frame_method = method::get_method_by_id(
+                                    &mut self.con,
+                                    &mut self.methods,
+                                    self.idsizes.method_id_size,
+                                    self.idsizes.object_id_size,
+                                    frame.class_id,
+                                    frame.method_id,
+                                )
+                                .map(|m| format!("{}{}", m.name, m.signature))
+                                .unwrap_or_else(|_| format!("<method:{}>", frame.method_id));
+
+                                bt_lines.push(format!(
+                                    "  #{} {} -> {}",
+                                    i, frame_class, frame_method
+                                ));
+                            }
+                            self.tracer.log_backtrace(&bt_lines);
+                        }
+                    }
+                }
             } else if kind == pvars::EVENT_METHOD_EXIT_WRV {
                 let duration_us = self.tracer.method_exit(
                     event.thread_id,
@@ -294,6 +344,10 @@ impl JdwpClient {
 
     pub fn set_log_file(&mut self, path: &str) -> std::io::Result<()> {
         self.tracer.set_log_file(path)
+    }
+
+    pub fn set_backtrace_file(&mut self, path: &str) -> std::io::Result<()> {
+        self.tracer.set_backtrace_file(path)
     }
 
     pub fn flush_log(&mut self) {

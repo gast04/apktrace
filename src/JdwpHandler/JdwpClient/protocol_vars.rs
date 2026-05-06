@@ -27,6 +27,7 @@ pub const RESUMEVM_SIG: (u8, u8) = (1, 9);
 pub const METHODS_SIG: (u8, u8) = (2, 5);
 
 pub const THREADNAME_SIG: (u8, u8) = (11, 1);
+pub const THREADFRAMES_SIG: (u8, u8) = (11, 6);
 
 pub const EVENTSET_SIG: (u8, u8) = (15, 1);
 

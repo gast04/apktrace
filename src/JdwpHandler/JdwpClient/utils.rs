@@ -233,3 +233,98 @@ pub fn get_thread_by_id(
     let packet_id = con.send_packet(pvars::THREADNAME_SIG, &data)?;
     con.read_reply_string(packet_id)
 }
+
+#[allow(dead_code)]
+pub struct StackFrame {
+    pub frame_id: u64,
+    pub type_tag: u8,
+    pub class_id: u64,
+    pub method_id: u64,
+    pub location_index: u64,
+}
+
+pub fn get_thread_frames(
+    con: &mut Conn,
+    obj_id_size: u32,
+    ref_type_id_size: u32,
+    method_id_size: u32,
+    frame_id_size: u32,
+    thread_id: u64,
+    max_frames: i32,
+) -> Result<Vec<StackFrame>, String> {
+    let mut data: Vec<u8> = Vec::new();
+
+    if obj_id_size == 4 {
+        append_u32(&mut data, thread_id as u32);
+    } else {
+        append_u64(&mut data, thread_id);
+    }
+    append_u32(&mut data, 0); // startFrame
+    append_u32(&mut data, max_frames as u32); // length (-1 = all)
+
+    let packet_id = con.send_packet(pvars::THREADFRAMES_SIG, &data)?;
+    let buffer = con.read_reply_buffer(packet_id)?;
+
+    if buffer.len() < 4 {
+        return Ok(Vec::new());
+    }
+
+    let frame_count = slice_to_u32(&buffer[0..4]) as usize;
+    let mut frames: Vec<StackFrame> = Vec::with_capacity(frame_count);
+    let mut it: usize = 4;
+
+    for _ in 0..frame_count {
+        if buffer.len() < it + frame_id_size as usize {
+            break;
+        }
+
+        let frame_id = if frame_id_size == 4 {
+            slice_to_u32(&buffer[it..it + 4]) as u64
+        } else {
+            slice_to_u64(&buffer[it..it + 8])
+        };
+        it += frame_id_size as usize;
+
+        if buffer.len() < it + 1 {
+            break;
+        }
+        let type_tag = buffer[it];
+        it += 1;
+
+        if buffer.len() < it + ref_type_id_size as usize {
+            break;
+        }
+        let class_id = if ref_type_id_size == 4 {
+            slice_to_u32(&buffer[it..it + 4]) as u64
+        } else {
+            slice_to_u64(&buffer[it..it + 8])
+        };
+        it += ref_type_id_size as usize;
+
+        if buffer.len() < it + method_id_size as usize {
+            break;
+        }
+        let method_id = if method_id_size == 4 {
+            slice_to_u32(&buffer[it..it + 4]) as u64
+        } else {
+            slice_to_u64(&buffer[it..it + 8])
+        };
+        it += method_id_size as usize;
+
+        if buffer.len() < it + 8 {
+            break;
+        }
+        let location_index = slice_to_u64(&buffer[it..it + 8]);
+        it += 8;
+
+        frames.push(StackFrame {
+            frame_id,
+            type_tag,
+            class_id,
+            method_id,
+            location_index,
+        });
+    }
+
+    Ok(frames)
+}

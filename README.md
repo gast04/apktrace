@@ -1,16 +1,8 @@
 # apktrace
 
-Trace all method entries and exits of a running Android/Java application via JDWP. On method exit, the duration is printed alongside an indented call tree showing nesting depth. On Ctrl+C, a performance summary is printed with self-time, total-time, call counts, and hottest methods.
+Trace all method entries and exits of a running Android/Java application via JDWP. On method exit, the duration is printed alongside an indented call tree showing nesting depth. On Ctrl+C, a performance summary is printed.
 
 The app must have `android:debuggable="true"` set and be already running. Attach by PID or package name.
-
-## Build
-
-```
-cargo build --release
-```
-
-The binary is `target/release/apktrace`.
 
 ## Usage
 
@@ -23,15 +15,16 @@ Usage:
   apktrace -l
 
 positional arguments:
-  target                Process PID or package name (e.g., 12345 or com.example.app)
+  target                Process PID or package name
 
 optional arguments:
-  -c, --class <pattern> Class pattern to trace (e.g., 'com.myapp.*')
-  -p, --port <port>     Local TCP port for JDWP forwarding (default: 33333)
-  -o, --output <file>   Output file for trace log (default: stdout)
-  --verbose             Enable verbose output
-  -l, --list            List debuggable processes
-  -v, --version         Show version
+  -c, --class <pattern>  Class pattern to trace (e.g., 'com.myapp.*')
+  -p, --port <port>      Local TCP port for JDWP forwarding (default: 33333)
+  -o, --output <file>    Output file for trace log (default: stdout)
+  -b, --backtrace <file> Output file for backtrace log (unique prints only)
+  --verbose              Enable verbose output
+  -l, --list             List debuggable processes
+  -v, --version          Show version
 ```
 
 ## Workflow
@@ -115,7 +108,3 @@ Lkotlin/jvm/internal/Intrinsics; -> checkNotNullParameter
 - `adb` in PATH
 - Device connected with USB debugging enabled
 - App built with `android:debuggable="true"`
-
-## Known issues
-
-- There is a known bug in the methodID size in the JDWP implementation that may affect some devices

@@ -1,5 +1,5 @@
 use colored::*;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::time::Instant;
@@ -60,6 +60,10 @@ pub struct Tracer {
     method_stats: HashMap<(u64, u64), MethodStats>,
     pub total_events: u64,
     log_writer: Option<BufWriter<File>>,
+    backtrace_writer: Option<BufWriter<File>>,
+    seen_backtraces: HashSet<Vec<(u64, u64)>>,
+    backtrace_total: u64,
+    backtrace_unique: u64,
 }
 
 impl Tracer {
@@ -69,6 +73,10 @@ impl Tracer {
             method_stats: HashMap::new(),
             total_events: 0,
             log_writer: None,
+            backtrace_writer: None,
+            seen_backtraces: HashSet::new(),
+            backtrace_total: 0,
+            backtrace_unique: 0,
         }
     }
 
@@ -76,6 +84,16 @@ impl Tracer {
         let file = File::create(path)?;
         self.log_writer = Some(BufWriter::new(file));
         Ok(())
+    }
+
+    pub fn set_backtrace_file(&mut self, path: &str) -> std::io::Result<()> {
+        let file = File::create(path)?;
+        self.backtrace_writer = Some(BufWriter::new(file));
+        Ok(())
+    }
+
+    pub fn has_backtrace_log(&self) -> bool {
+        self.backtrace_writer.is_some()
     }
 
     pub fn log(&mut self, line: &str) {
@@ -86,8 +104,30 @@ impl Tracer {
         }
     }
 
+    pub fn is_backtrace_new(&mut self, signature: Vec<(u64, u64)>) -> bool {
+        self.backtrace_total += 1;
+        if self.seen_backtraces.contains(&signature) {
+            return false;
+        }
+        self.seen_backtraces.insert(signature);
+        self.backtrace_unique += 1;
+        true
+    }
+
+    pub fn log_backtrace(&mut self, lines: &[String]) {
+        if let Some(ref mut writer) = self.backtrace_writer {
+            for line in lines {
+                let _ = writeln!(writer, "{}", line);
+            }
+            let _ = writeln!(writer);
+        }
+    }
+
     pub fn flush(&mut self) {
         if let Some(ref mut writer) = self.log_writer {
+            let _ = writer.flush();
+        }
+        if let Some(ref mut writer) = self.backtrace_writer {
             let _ = writer.flush();
         }
     }
@@ -156,7 +196,14 @@ impl Tracer {
         println!("{}", "═".repeat(110).cyan());
 
         println!("\nTotal events processed: {}", self.total_events);
-        println!("Unique methods traced: {}\n", self.method_stats.len());
+        println!("Unique methods traced: {}", self.method_stats.len());
+        if self.backtrace_total > 0 {
+            println!(
+                "Backtraces: {} unique / {} total",
+                self.backtrace_unique, self.backtrace_total
+            );
+        }
+        println!();
 
         if self.method_stats.is_empty() {
             println!("No method timing data collected.");

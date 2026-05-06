@@ -108,6 +108,10 @@ pub fn set_log_file(handler: &mut JdwpHandler, path: &str) -> std::io::Result<()
     handler.client.set_log_file(path)
 }
 
+pub fn set_backtrace_file(handler: &mut JdwpHandler, path: &str) -> std::io::Result<()> {
+    handler.client.set_backtrace_file(path)
+}
+
 pub fn flush_log(handler: &mut JdwpHandler) {
     handler.client.flush_log();
 }
