@@ -2,6 +2,7 @@ use super::pvars;
 use super::utils;
 
 use crate::jdwp_handler::jdwp_client::connection::Connection as Conn;
+use std::collections::HashMap;
 
 pub struct Class {
     pub ref_type_tag: u8,
@@ -30,10 +31,29 @@ impl Class {
 
 pub struct Classes {
     pub vec: Vec<Class>,
+    by_id: HashMap<u64, String>,
 }
 impl Classes {
     pub fn new() -> Self {
-        return Classes { vec: Vec::new() };
+        return Classes {
+            vec: Vec::new(),
+            by_id: HashMap::new(),
+        };
+    }
+
+    pub fn clear(&mut self) {
+        self.vec.clear();
+        self.by_id.clear();
+    }
+
+    pub fn push(&mut self, class: Class) {
+        self.by_id
+            .insert(class.ref_type_id, class.signature.clone());
+        self.vec.push(class);
+    }
+
+    pub fn get_cached_name_by_id(&self, ref_type_id: u64) -> Option<String> {
+        self.by_id.get(&ref_type_id).cloned()
     }
 }
 
@@ -99,7 +119,7 @@ pub fn fetch_all_classes(
         match parse_class(&buffer[offset..], type_id_size) {
             Some((class, size)) => {
                 if !class.signature.is_empty() {
-                    classes.vec.push(class);
+                    classes.push(class);
                 }
                 next_entry += size as u64;
             }
@@ -115,19 +135,15 @@ pub fn get_name_by_id(
     ref_tis: u32,
     ref_type_id: u64,
 ) -> Result<String, String> {
-    for class in &classes.vec {
-        if class.ref_type_id == ref_type_id {
-            return Ok(class.signature.clone());
-        }
+    if let Some(name) = classes.get_cached_name_by_id(ref_type_id) {
+        return Ok(name);
     }
 
     // clear all classes and reload again
-    classes.vec.clear();
+    classes.clear();
     fetch_all_classes(con, classes, ref_tis)?;
-    for class in &classes.vec {
-        if class.ref_type_id == ref_type_id {
-            return Ok(class.signature.clone());
-        }
+    if let Some(name) = classes.get_cached_name_by_id(ref_type_id) {
+        return Ok(name);
     }
 
     Ok("unknownClass;".to_string())

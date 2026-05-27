@@ -84,6 +84,10 @@ impl Threads {
         self.map.insert(thread_id, ThreadInfo { name });
         self.map.get(&thread_id).unwrap()
     }
+
+    pub fn len(&self) -> usize {
+        self.map.len()
+    }
 }
 
 pub fn slice_to_u32(slice: &[u8]) -> u32 {
@@ -232,6 +236,35 @@ pub fn get_thread_by_id(
 
     let packet_id = con.send_packet(pvars::THREADNAME_SIG, &data)?;
     con.read_reply_string(packet_id)
+}
+
+pub fn get_all_thread_ids(con: &mut Conn, obj_id_size: u32) -> Result<Vec<u64>, String> {
+    let packet_id = con.send_packet(pvars::ALLTHREADS_SIG, b"")?;
+    let buffer = con.read_reply_buffer(packet_id)?;
+
+    if buffer.len() < 4 {
+        return Err("AllThreads reply was too short".to_string());
+    }
+
+    let thread_count = slice_to_u32(&buffer[0..4]) as usize;
+    let mut threads: Vec<u64> = Vec::with_capacity(thread_count);
+    let mut it: usize = 4;
+
+    for _ in 0..thread_count {
+        if buffer.len() < it + obj_id_size as usize {
+            break;
+        }
+
+        let thread_id = if obj_id_size == 4 {
+            slice_to_u32(&buffer[it..it + 4]) as u64
+        } else {
+            slice_to_u64(&buffer[it..it + 8])
+        };
+        threads.push(thread_id);
+        it += obj_id_size as usize;
+    }
+
+    Ok(threads)
 }
 
 #[allow(dead_code)]

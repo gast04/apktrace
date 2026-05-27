@@ -8,6 +8,8 @@ use argparse::{ArgumentParser, Print, Store, StoreTrue};
 mod apktools;
 #[path = "JdwpHandler/jdwp_handler.rs"]
 mod jdwp_handler;
+#[path = "NativeLibTracer/native_lib_tracer.rs"]
+mod native_lib_tracer;
 
 fn main() {
     println!("apktrace - JDWP Method Tracer & Performance Analyzer");
@@ -20,16 +22,16 @@ fn main() {
     let mut list_processes: bool = false;
     let mut output_file: String = "".to_string();
     let mut backtrace_file: String = "".to_string();
+    let mut library_load: bool = false;
+    let mut library_log: String = "".to_string();
+    let mut log_only: bool = false;
 
     {
         let mut ap = ArgumentParser::new();
         ap.set_description("Attach to a running Android/Java application via JDWP to trace method entry/exit with timing");
 
-        ap.refer(&mut target).add_argument(
-            "target",
-            Store,
-            "Process PID or package name",
-        );
+        ap.refer(&mut target)
+            .add_argument("target", Store, "Process PID or package name");
 
         ap.refer(&mut class_pattern).add_option(
             &["-c", "--class"],
@@ -55,6 +57,12 @@ fn main() {
             "Output file for backtraces on METHOD_ENTRY events",
         );
 
+        ap.refer(&mut log_only).add_option(
+            &["--log-only"],
+            StoreTrue,
+            "Log method events without suspending/resuming the VM",
+        );
+
         ap.refer(&mut verbose)
             .add_option(&["--verbose"], StoreTrue, "Enable verbose output");
 
@@ -62,6 +70,18 @@ fn main() {
             &["-l", "--list"],
             StoreTrue,
             "List debuggable processes",
+        );
+
+        ap.refer(&mut library_load).add_option(
+            &["--library-load"],
+            StoreTrue,
+            "Trace native library loads via a64dbg (ARM64 devices)",
+        );
+
+        ap.refer(&mut library_log).add_option(
+            &["--library-log"],
+            Store,
+            "Output file for native library load events (default: library_loads.log)",
         );
 
         ap.add_option(
@@ -72,6 +92,12 @@ fn main() {
 
         ap.parse_args_or_exit();
     }
+
+    let suspend_policy = if log_only {
+        jdwp_handler::SUSPEND_NONE
+    } else {
+        jdwp_handler::SUSPEND_EVENT_THREAD
+    };
 
     if list_processes {
         println!("Debuggable processes:");
@@ -113,7 +139,7 @@ fn main() {
 
     apktools::forward_jdwp(tcp_port, target_pid);
 
-    let res = jdwp_handler::init_connection("127.0.0.1", tcp_port as u16, verbose);
+    let res = jdwp_handler::init_connection("127.0.0.1", tcp_port as u16, verbose, !log_only);
     if !res.is_ok() {
         println!("Failed to connect to JDWP. Is the app running in debug mode?");
         process::exit(-1);
@@ -130,7 +156,9 @@ fn main() {
         }
     }
 
-    if !backtrace_file.is_empty() {
+    if log_only && !backtrace_file.is_empty() {
+        eprintln!("[apktrace] Warning: backtraces disabled in log-only mode");
+    } else if !backtrace_file.is_empty() {
         match jdwp_handler::set_backtrace_file(&mut handler, &backtrace_file) {
             Ok(_) => println!("[apktrace] Backtraces to: {}", backtrace_file),
             Err(e) => {
@@ -140,30 +168,70 @@ fn main() {
         }
     }
 
+    let mut lib_tracer: Option<native_lib_tracer::NativeLibTracer> = None;
+    if library_load {
+        let log_file = if library_log.is_empty() {
+            "library_loads.log".to_string()
+        } else {
+            library_log.clone()
+        };
+
+        match native_lib_tracer::NativeLibTracer::new(target_pid, &log_file, verbose) {
+            Ok(tracer) => {
+                println!("[apktrace] Native library tracing enabled -> {}", log_file);
+                lib_tracer = Some(tracer);
+            }
+            Err(e) => {
+                eprintln!(
+                    "[apktrace] Warning: Failed to start native lib tracer: {}",
+                    e
+                );
+                eprintln!("[apktrace] Continuing without native library tracing");
+            }
+        }
+    }
+
+    if log_only {
+        if let Err(e) = jdwp_handler::warm_log_only_caches(&mut handler, &class_pattern) {
+            eprintln!(
+                "[apktrace] Warning: failed to preload log-only caches: {}",
+                e
+            );
+        }
+    }
+
     if class_pattern.is_empty() {
-        if let Err(e) = jdwp_handler::break_on_method_entry(&mut handler, "") {
+        if let Err(e) = jdwp_handler::break_on_method_entry(&mut handler, "", suspend_policy) {
             println!("Failed to register METHOD_ENTRY event: {}", e);
             process::exit(-1);
         }
-        if let Err(e) = jdwp_handler::break_on_method_exit_wrv(&mut handler, "") {
+        if let Err(e) = jdwp_handler::break_on_method_exit_wrv(&mut handler, "", suspend_policy) {
             println!("Failed to register METHOD_EXIT event: {}", e);
             process::exit(-1);
         }
     } else {
         println!("[apktrace] Tracing classes matching: {}", class_pattern);
-        if let Err(e) = jdwp_handler::break_on_method_entry_match(&mut handler, &class_pattern) {
+        if let Err(e) =
+            jdwp_handler::break_on_method_entry_match(&mut handler, &class_pattern, suspend_policy)
+        {
             println!("Failed to register METHOD_ENTRY event: {}", e);
             process::exit(-1);
         }
-        if let Err(e) = jdwp_handler::break_on_method_exit_match(&mut handler, &class_pattern) {
+        if let Err(e) =
+            jdwp_handler::break_on_method_exit_match(&mut handler, &class_pattern, suspend_policy)
+        {
             println!("Failed to register METHOD_EXIT event: {}", e);
             process::exit(-1);
         }
     }
 
-    if let Err(e) = jdwp_handler::resume_vm(&mut handler) {
-        println!("Failed to resume VM: {}", e);
-        process::exit(-1);
+    if !log_only {
+        if let Err(e) = jdwp_handler::resume_vm(&mut handler) {
+            println!("Failed to resume VM: {}", e);
+            process::exit(-1);
+        }
+    } else {
+        println!("[apktrace] Log-only mode enabled; VM suspend/resume is disabled");
     }
 
     let running = Arc::new(AtomicBool::new(true));
@@ -182,13 +250,15 @@ fn main() {
     const MAX_CONSECUTIVE_FAILURES: u32 = 3;
 
     while running.load(Ordering::SeqCst) {
-        match jdwp_handler::wait_for_event(&mut handler) {
+        match jdwp_handler::wait_for_event(&mut handler, !log_only) {
             Ok(processed_events) => {
                 consecutive_failures = 0;
                 event_count += processed_events as u64;
-                if let Err(e) = jdwp_handler::resume_vm(&mut handler) {
-                    eprintln!("[apktrace] Failed to resume VM: {}", e);
-                    break;
+                if !log_only {
+                    if let Err(e) = jdwp_handler::resume_vm(&mut handler) {
+                        eprintln!("[apktrace] Failed to resume VM: {}", e);
+                        break;
+                    }
                 }
             }
             Err(e) => {
@@ -219,6 +289,12 @@ fn main() {
     }
 
     jdwp_handler::flush_log(&mut handler);
+
+    if let Some(mut tracer) = lib_tracer {
+        tracer.stop();
+        tracer.print_summary();
+    }
+
     println!("\nTracing stopped.");
     jdwp_handler::print_summary(&handler);
 }

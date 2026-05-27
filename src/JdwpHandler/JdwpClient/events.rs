@@ -181,6 +181,7 @@ pub fn class_match_event(
     con: &mut Conn,
     class_pattern: &str,
     event_kind: u8,
+    suspend_policy: u8,
 ) -> Result<u32, String> {
     /*
       Packet data Format:
@@ -199,7 +200,7 @@ pub fn class_match_event(
 
     let mut packet_data: Vec<u8> = Vec::new();
     packet_data.push(event_kind);
-    packet_data.push(pvars::SUSPEND_EVENT_THREAD);
+    packet_data.push(suspend_policy);
     utils::append_u32(&mut packet_data, 1);
     packet_data.push(pvars::MODKIND_CLASS_MATCH);
     utils::append_string(&mut packet_data, class_pattern);
@@ -208,7 +209,11 @@ pub fn class_match_event(
     con.read_reqid(packet_id)
 }
 
-pub fn class_exclude_event(con: &mut Conn, event_kind: u8) -> Result<u32, String> {
+pub fn class_exclude_event(
+    con: &mut Conn,
+    event_kind: u8,
+    suspend_policy: u8,
+) -> Result<u32, String> {
     /*
       Packet data Format:
         B Event Kind
@@ -224,7 +229,7 @@ pub fn class_exclude_event(con: &mut Conn, event_kind: u8) -> Result<u32, String
 
     let mut packet_data: Vec<u8> = Vec::new();
     packet_data.push(event_kind);
-    packet_data.push(pvars::SUSPEND_EVENT_THREAD);
+    packet_data.push(suspend_policy);
     utils::append_u32(&mut packet_data, 9);
 
     // unwanted java classes

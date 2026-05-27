@@ -20,6 +20,7 @@
 
 pub const VERSION_SIG: (u8, u8) = (1, 1);
 pub const ALLCLASSES_SIG: (u8, u8) = (1, 3);
+pub const ALLTHREADS_SIG: (u8, u8) = (1, 4);
 pub const IDSIZES_SIG: (u8, u8) = (1, 7);
 pub const SUSPENDVM_SIG: (u8, u8) = (1, 8);
 pub const RESUMEVM_SIG: (u8, u8) = (1, 9);

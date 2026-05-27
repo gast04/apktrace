@@ -7,7 +7,7 @@ mod event;
 #[path = "methods.rs"]
 mod method;
 #[path = "protocol_vars.rs"]
-mod pvars;
+pub(super) mod pvars;
 #[path = "tracer.rs"]
 pub mod tracer;
 #[path = "utils.rs"]
@@ -128,43 +128,198 @@ impl JdwpClient {
         Ok(())
     }
 
-    pub fn evt_entry_class_match(&mut self, class_pattern: &str) -> Result<(), String> {
+    fn class_is_default_traced(signature: &str) -> bool {
+        !signature.starts_with("Ljava/")
+            && !signature.starts_with("Ljavax/")
+            && !signature.starts_with("Lsun/")
+            && !signature.starts_with("Lcom/sun/")
+            && !signature.starts_with("Ldalvik/system/")
+            && !signature.starts_with("Llibcore/")
+            && !signature.starts_with("Landroid/")
+            && !signature.starts_with("Lcom/android/")
+            && !signature.starts_with("Landroidx/")
+    }
+
+    fn wildcard_match(value: &str, pattern: &str) -> bool {
+        let mut rest = value;
+        let mut first = true;
+        for part in pattern.split('*') {
+            if part.is_empty() {
+                continue;
+            }
+
+            if first && !pattern.starts_with('*') {
+                let Some(stripped) = rest.strip_prefix(part) else {
+                    return false;
+                };
+                rest = stripped;
+            } else {
+                let Some(idx) = rest.find(part) else {
+                    return false;
+                };
+                rest = &rest[idx + part.len()..];
+            }
+            first = false;
+        }
+
+        pattern.ends_with('*') || rest.is_empty()
+    }
+
+    fn class_matches_pattern(signature: &str, pattern: &str) -> bool {
+        if pattern.is_empty() {
+            return Self::class_is_default_traced(signature);
+        }
+
+        if Self::wildcard_match(signature, pattern) {
+            return true;
+        }
+
+        let slash_pattern = pattern.replace('.', "/");
+        if Self::wildcard_match(signature, &slash_pattern) {
+            return true;
+        }
+
+        let unwrapped_signature = signature
+            .strip_prefix('L')
+            .unwrap_or(signature)
+            .strip_suffix(';')
+            .unwrap_or(signature);
+        let dotted_signature = unwrapped_signature.replace('/', ".");
+        Self::wildcard_match(&dotted_signature, pattern)
+    }
+
+    pub fn warm_log_only_caches(&mut self, class_pattern: &str) -> Result<(), String> {
+        println!("[apktrace] Preloading thread names for log-only mode...");
+        match utils::get_all_thread_ids(&mut self.con, self.idsizes.object_id_size) {
+            Ok(thread_ids) => {
+                for thread_id in thread_ids {
+                    if self.threads.get(thread_id).is_some() {
+                        continue;
+                    }
+                    match utils::get_thread_by_id(
+                        &mut self.con,
+                        self.idsizes.object_id_size,
+                        thread_id,
+                    ) {
+                        Ok(name) => {
+                            self.threads.insert(thread_id, name);
+                        }
+                        Err(e) => {
+                            eprintln!(
+                                "[apktrace] Warning: could not preload thread {}: {}",
+                                thread_id, e
+                            );
+                        }
+                    }
+                }
+                println!("[apktrace] Preloaded {} thread names", self.threads.len());
+            }
+            Err(e) => {
+                eprintln!("[apktrace] Warning: could not list threads: {}", e);
+            }
+        }
+
+        let class_ids: Vec<(u64, String)> = self
+            .classes
+            .vec
+            .iter()
+            .filter(|class| Self::class_matches_pattern(&class.signature, class_pattern))
+            .map(|class| (class.ref_type_id, class.signature.clone()))
+            .collect();
+
+        println!(
+            "[apktrace] Preloading methods for {} traced classes...",
+            class_ids.len()
+        );
+
+        let mut loaded_classes = 0usize;
+        let mut loaded_methods = 0usize;
+        let mut failed_classes = 0usize;
+
+        for (idx, (class_id, signature)) in class_ids.iter().enumerate() {
+            match method::fetch_methods_for_class(
+                &mut self.con,
+                &mut self.methods,
+                self.idsizes.method_id_size,
+                self.idsizes.object_id_size,
+                *class_id,
+            ) {
+                Ok(count) => {
+                    loaded_classes += 1;
+                    loaded_methods += count;
+                }
+                Err(e) => {
+                    failed_classes += 1;
+                    if self.verbose {
+                        eprintln!(
+                            "[apktrace] Warning: could not preload methods for {}: {}",
+                            signature, e
+                        );
+                    }
+                }
+            }
+
+            if self.verbose && (idx + 1) % 250 == 0 {
+                eprintln!(
+                    "[apktrace] Preloaded methods for {}/{} classes...",
+                    idx + 1,
+                    class_ids.len()
+                );
+            }
+        }
+
+        println!(
+            "[apktrace] Preloaded {} methods from {} classes ({} failed)",
+            loaded_methods, loaded_classes, failed_classes
+        );
+        Ok(())
+    }
+
+    pub fn evt_entry_class_match(
+        &mut self,
+        class_pattern: &str,
+        suspend_policy: u8,
+    ) -> Result<(), String> {
         self.dbg_print("evt_entry_class_match");
 
         let e_kind = pvars::EVENT_METHOD_ENTRY;
-        let r_id = event::class_match_event(&mut self.con, &class_pattern, e_kind)?;
+        let r_id = event::class_match_event(&mut self.con, &class_pattern, e_kind, suspend_policy)?;
         self.created_events.push((e_kind, r_id));
         Ok(())
     }
 
-    pub fn evt_entry_class_exclude(&mut self) -> Result<(), String> {
+    pub fn evt_entry_class_exclude(&mut self, suspend_policy: u8) -> Result<(), String> {
         self.dbg_print("evt_entry_class_exclude");
 
         let e_kind = pvars::EVENT_METHOD_ENTRY;
-        let r_id = event::class_exclude_event(&mut self.con, e_kind)?;
+        let r_id = event::class_exclude_event(&mut self.con, e_kind, suspend_policy)?;
         self.created_events.push((e_kind, r_id));
         Ok(())
     }
 
-    pub fn evt_exit_wrv_class_match(&mut self, class_pattern: &str) -> Result<(), String> {
+    pub fn evt_exit_wrv_class_match(
+        &mut self,
+        class_pattern: &str,
+        suspend_policy: u8,
+    ) -> Result<(), String> {
         self.dbg_print("evt_exit_wrv_class_match");
 
         let e_kind = pvars::EVENT_METHOD_EXIT_WRV;
-        let r_id = event::class_match_event(&mut self.con, &class_pattern, e_kind)?;
+        let r_id = event::class_match_event(&mut self.con, &class_pattern, e_kind, suspend_policy)?;
         self.created_events.push((e_kind, r_id));
         Ok(())
     }
 
-    pub fn evt_exit_wrv_class_exclude(&mut self) -> Result<(), String> {
+    pub fn evt_exit_wrv_class_exclude(&mut self, suspend_policy: u8) -> Result<(), String> {
         self.dbg_print("evt_exit_wrv_class_exclude");
 
         let e_kind = pvars::EVENT_METHOD_EXIT_WRV;
-        let r_id = event::class_exclude_event(&mut self.con, e_kind)?;
+        let r_id = event::class_exclude_event(&mut self.con, e_kind, suspend_policy)?;
         self.created_events.push((e_kind, r_id));
         Ok(())
     }
 
-    pub fn wait_for_event(&mut self) -> Result<usize, String> {
+    pub fn wait_for_event(&mut self, allow_jdwp_lookups: bool) -> Result<usize, String> {
         let buffer = self.con.read_buffer()?;
 
         let response = event::parse_event_response(
@@ -198,36 +353,62 @@ impl JdwpClient {
                 continue;
             };
 
-            let class_name = class::get_name_by_id(
-                &mut self.con,
-                &mut self.classes,
-                self.idsizes.reference_type_id_size,
-                event.class_id,
-            )?;
+            let class_name = if allow_jdwp_lookups {
+                class::get_name_by_id(
+                    &mut self.con,
+                    &mut self.classes,
+                    self.idsizes.reference_type_id_size,
+                    event.class_id,
+                )?
+            } else {
+                self.classes
+                    .get_cached_name_by_id(event.class_id)
+                    .unwrap_or_else(|| format!("Lunknown/{};", event.class_id))
+            };
 
-            let method = method::get_method_by_id(
-                &mut self.con,
-                &mut self.methods,
-                self.idsizes.method_id_size,
-                self.idsizes.object_id_size,
-                event.class_id,
-                event.method_id,
-            )?;
+            let method = if allow_jdwp_lookups {
+                method::get_method_by_id(
+                    &mut self.con,
+                    &mut self.methods,
+                    self.idsizes.method_id_size,
+                    self.idsizes.object_id_size,
+                    event.class_id,
+                    event.method_id,
+                )?
+            } else {
+                self.methods
+                    .get_cached_by_id(event.class_id, event.method_id)
+                    .unwrap_or_else(|| method::Method {
+                        ref_type_id: event.class_id,
+                        method_id: event.method_id,
+                        name: format!("<method:{}>", event.method_id),
+                        signature: String::new(),
+                        modbits: 0,
+                        ret_void: true,
+                        native: false,
+                    })
+            };
 
             let method_display = format!("{}{}", method.name, method.signature);
 
-            let thread_info = match self.threads.get(event.thread_id) {
-                Some(info) => info,
-                None => {
-                    let name = utils::get_thread_by_id(
-                        &mut self.con,
-                        self.idsizes.object_id_size,
-                        event.thread_id,
-                    )?;
-                    self.threads.insert(event.thread_id, name)
+            let thread_name = if allow_jdwp_lookups {
+                match self.threads.get(event.thread_id) {
+                    Some(info) => info.name.clone(),
+                    None => {
+                        let name = utils::get_thread_by_id(
+                            &mut self.con,
+                            self.idsizes.object_id_size,
+                            event.thread_id,
+                        )?;
+                        self.threads.insert(event.thread_id, name).name.clone()
+                    }
                 }
+            } else {
+                self.threads
+                    .get(event.thread_id)
+                    .map(|info| info.name.clone())
+                    .unwrap_or_else(|| "thread".to_string())
             };
-            let thread_name = &thread_info.name;
 
             let time = utils::get_current_time();
             let native_flag = if method.native { "N" } else { " " };
@@ -290,10 +471,8 @@ impl JdwpClient {
                                 .map(|m| format!("{}{}", m.name, m.signature))
                                 .unwrap_or_else(|_| format!("<method:{}>", frame.method_id));
 
-                                bt_lines.push(format!(
-                                    "  #{} {} -> {}",
-                                    i, frame_class, frame_method
-                                ));
+                                bt_lines
+                                    .push(format!("  #{} {} -> {}", i, frame_class, frame_method));
                             }
                             self.tracer.log_backtrace(&bt_lines);
                         }

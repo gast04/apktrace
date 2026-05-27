@@ -1,6 +1,9 @@
 #[path = "JdwpClient/jdwp_client.rs"]
 mod jdwp_client;
 
+pub const SUSPEND_NONE: u8 = jdwp_client::pvars::SUSPEND_NONE;
+pub const SUSPEND_EVENT_THREAD: u8 = jdwp_client::pvars::SUSPEND_EVENT_THREAD;
+
 pub struct JdwpHandler {
     client: jdwp_client::JdwpClient,
     #[allow(dead_code)]
@@ -22,7 +25,12 @@ impl JdwpHandler {
     }
 }
 
-pub fn init_connection(host: &str, port: u16, verbose: bool) -> Result<JdwpHandler, String> {
+pub fn init_connection(
+    host: &str,
+    port: u16,
+    verbose: bool,
+    suspend_on_attach: bool,
+) -> Result<JdwpHandler, String> {
     let res = JdwpHandler::new(host, port, verbose);
     if res.is_err() {
         println!(
@@ -40,7 +48,9 @@ pub fn init_connection(host: &str, port: u16, verbose: bool) -> Result<JdwpHandl
     }
     println!("[apktrace] Handshake successful");
 
-    _handler.client.suspend_vm()?;
+    if suspend_on_attach {
+        _handler.client.suspend_vm()?;
+    }
     _handler.client.get_idsizes()?;
     _handler.client.get_version()?;
     _handler.client.fetch_classes()?;
@@ -57,8 +67,9 @@ pub fn init_connection(host: &str, port: u16, verbose: bool) -> Result<JdwpHandl
 pub fn break_on_method_entry(
     handler: &mut JdwpHandler,
     _class_pattern: &str,
+    suspend_policy: u8,
 ) -> Result<(), String> {
-    handler.client.evt_entry_class_exclude()?;
+    handler.client.evt_entry_class_exclude(suspend_policy)?;
     println!("[apktrace] Registered METHOD_ENTRY event (exclude mode)");
     Ok(())
 }
@@ -66,8 +77,9 @@ pub fn break_on_method_entry(
 pub fn break_on_method_exit_wrv(
     handler: &mut JdwpHandler,
     _class_pattern: &str,
+    suspend_policy: u8,
 ) -> Result<(), String> {
-    handler.client.evt_exit_wrv_class_exclude()?;
+    handler.client.evt_exit_wrv_class_exclude(suspend_policy)?;
     println!("[apktrace] Registered METHOD_EXIT event (exclude mode)");
     Ok(())
 }
@@ -75,8 +87,11 @@ pub fn break_on_method_exit_wrv(
 pub fn break_on_method_entry_match(
     handler: &mut JdwpHandler,
     class_pattern: &str,
+    suspend_policy: u8,
 ) -> Result<(), String> {
-    handler.client.evt_entry_class_match(class_pattern)?;
+    handler
+        .client
+        .evt_entry_class_match(class_pattern, suspend_policy)?;
     println!(
         "[apktrace] Registered METHOD_ENTRY event (match: {})",
         class_pattern
@@ -87,8 +102,11 @@ pub fn break_on_method_entry_match(
 pub fn break_on_method_exit_match(
     handler: &mut JdwpHandler,
     class_pattern: &str,
+    suspend_policy: u8,
 ) -> Result<(), String> {
-    handler.client.evt_exit_wrv_class_match(class_pattern)?;
+    handler
+        .client
+        .evt_exit_wrv_class_match(class_pattern, suspend_policy)?;
     println!(
         "[apktrace] Registered METHOD_EXIT event (match: {})",
         class_pattern
@@ -100,8 +118,15 @@ pub fn resume_vm(handler: &mut JdwpHandler) -> Result<(), String> {
     handler.client.resume_vm()
 }
 
-pub fn wait_for_event(handler: &mut JdwpHandler) -> Result<usize, String> {
-    handler.client.wait_for_event()
+pub fn wait_for_event(
+    handler: &mut JdwpHandler,
+    allow_jdwp_lookups: bool,
+) -> Result<usize, String> {
+    handler.client.wait_for_event(allow_jdwp_lookups)
+}
+
+pub fn warm_log_only_caches(handler: &mut JdwpHandler, class_pattern: &str) -> Result<(), String> {
+    handler.client.warm_log_only_caches(class_pattern)
 }
 
 pub fn set_log_file(handler: &mut JdwpHandler, path: &str) -> std::io::Result<()> {

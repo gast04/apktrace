@@ -1,5 +1,6 @@
 use super::pvars;
 use super::utils;
+use std::collections::{HashMap, HashSet};
 
 // chain of modules, starting from root directory
 use crate::jdwp_handler::jdwp_client::connection::Connection as Conn;
@@ -56,10 +57,40 @@ impl Method {
 
 pub struct Methods {
     pub vec: Vec<Method>,
+    by_id: HashMap<(u64, u64), usize>,
+    fetched_classes: HashSet<u64>,
 }
 impl Methods {
     pub fn new() -> Self {
-        return Methods { vec: Vec::new() };
+        return Methods {
+            vec: Vec::new(),
+            by_id: HashMap::new(),
+            fetched_classes: HashSet::new(),
+        };
+    }
+
+    pub fn push(&mut self, method: Method) {
+        let key = (method.ref_type_id, method.method_id);
+        if self.by_id.contains_key(&key) {
+            return;
+        }
+
+        self.vec.push(method);
+        self.by_id.insert(key, self.vec.len() - 1);
+    }
+
+    pub fn mark_class_fetched(&mut self, ref_type_id: u64) {
+        self.fetched_classes.insert(ref_type_id);
+    }
+
+    pub fn has_fetched_class(&self, ref_type_id: u64) -> bool {
+        self.fetched_classes.contains(&ref_type_id)
+    }
+
+    pub fn get_cached_by_id(&self, ref_type_id: u64, method_id: u64) -> Option<Method> {
+        self.by_id
+            .get(&(ref_type_id, method_id))
+            .map(|idx| self.vec[*idx].copy())
     }
 
     #[allow(dead_code)]
@@ -141,24 +172,17 @@ fn parse_method(buffer: &[u8], rti: u64, m_id_size: u32) -> Option<(Method, usiz
     Some((method, it))
 }
 
-pub fn get_method_by_id(
+pub fn fetch_methods_for_class(
     con: &mut Conn,
     methods: &mut Methods,
     m_id_size: u32,
     o_id_size: u32,
     ref_type_id: u64,
-    method_id: u64,
-) -> Result<Method, String> {
-    // check if method name is already in vector
-    for method in &methods.vec {
-        if method.ref_type_id == ref_type_id && method.method_id == method_id as u64 {
-            return Ok(method.copy());
-        }
+) -> Result<usize, String> {
+    if methods.has_fetched_class(ref_type_id) {
+        return Ok(0);
     }
 
-    // method not found fetch all methods from this class
-
-    // fill data with class_id from which we wanna fetch all methods
     let mut data: Vec<u8> = Vec::new();
     if o_id_size == 4 {
         utils::append_u32(&mut data, ref_type_id as u32);
@@ -175,6 +199,7 @@ pub fn get_method_by_id(
 
     let cnt = utils::slice_to_u32(&buffer[0..4]);
 
+    let before = methods.vec.len();
     let mut it: usize = 4;
     for _ in 0..cnt {
         if it >= buffer.len() {
@@ -183,16 +208,32 @@ pub fn get_method_by_id(
         match parse_method(&buffer[it..], ref_type_id, m_id_size) {
             Some((method, nit)) => {
                 it += nit;
-                methods.vec.push(method);
+                methods.push(method);
             }
             None => break,
         }
     }
 
-    for method in &methods.vec {
-        if method.ref_type_id == ref_type_id && method.method_id == method_id {
-            return Ok(method.copy());
-        }
+    methods.mark_class_fetched(ref_type_id);
+    Ok(methods.vec.len().saturating_sub(before))
+}
+
+pub fn get_method_by_id(
+    con: &mut Conn,
+    methods: &mut Methods,
+    m_id_size: u32,
+    o_id_size: u32,
+    ref_type_id: u64,
+    method_id: u64,
+) -> Result<Method, String> {
+    if let Some(method) = methods.get_cached_by_id(ref_type_id, method_id) {
+        return Ok(method);
+    }
+
+    fetch_methods_for_class(con, methods, m_id_size, o_id_size, ref_type_id)?;
+
+    if let Some(method) = methods.get_cached_by_id(ref_type_id, method_id) {
+        return Ok(method);
     }
 
     Ok(Method::new())
