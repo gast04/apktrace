@@ -22,6 +22,9 @@ optional arguments:
   -p, --port <port>      Local TCP port for JDWP forwarding (default: 33333)
   -o, --output <file>    Output file for trace log (default: stdout)
   -b, --backtrace <file> Output file for backtrace log (unique prints only)
+  --log-only             Log method events without suspending/resuming the VM
+  --library-load         Trace native library loads via a64dbg (ARM64)
+  --library-log <file>   Output file for library loads (default: library_loads.log)
   --verbose              Enable verbose output
   -l, --list             List debuggable processes
   -v, --version          Show version
@@ -47,7 +50,18 @@ Debuggable processes:
 
 # Save trace to file for later analysis
 >> apktrace com.example.app -c 'Lcom/example/app/*' -o trace.out
+
+# Log-only mode: lower impact, no JDWP suspend/resume
+>> apktrace com.example.app --log-only
 ```
+
+`--log-only` registers method events with `SUSPEND_NONE`. apktrace logs incoming
+events but does not suspend the VM on attach, does not resume after events, and
+disables `-b` backtraces because the event thread is not frozen. To avoid JDWP
+reply waits while the VM keeps running, log-only mode preloads current thread
+names and traced class methods before registering events. Threads or classes that
+appear after tracing starts may still be logged with raw IDs such as
+`<method:12345>`.
 
 ## Output format
 
@@ -103,8 +117,34 @@ Lkotlin/jvm/internal/Intrinsics; -> checkNotNullParameter
 -> access$
 ```
 
+## Native library load tracing
+
+Use `--library-load` to also trace native library loads (`.so` files) via a breakpoint on the linker:
+
+```
+>> apktrace com.example.app --library-load
+[apktrace] Native library tracing enabled -> library_loads.log
+[libtracer] Loaded: /data/app/~~abc123==/com.example.app-xyz==/lib/arm64/libnative.so
+[libtracer] Loaded: /system/lib64/libandroid.so
+...
+```
+
+This uses [a64dbg](https://github.com/user/a64dbg) - an on-device ARM64 debugger - with the standard ELF `r_debug` interface:
+
+1. Reads `r_debug.r_brk` from the linker to find the breakpoint address
+2. Sets a breakpoint at `r_brk` (called on every library load/unload)
+3. Walks `r_debug.r_map` (linked list of loaded libraries) to detect new loads
+
+This is the same interface GDB uses internally and works even on stripped linkers.
+
+Requirements for `--library-load`:
+- a64dbg binary (automatically pushed to `/data/local/tmp/a64dbg` on device)
+- Set `A64DBG_PATH` to point to your a64dbg binary, or have it at `~/gitrepos/a64dbg/build/a64dbg`
+- Device must be ARM64 (aarch64)
+
 ## Prerequisites
 
 - `adb` in PATH
 - Device connected with USB debugging enabled
 - App built with `android:debuggable="true"`
+- For `--library-load`: a64dbg binary (ARM64 devices only)

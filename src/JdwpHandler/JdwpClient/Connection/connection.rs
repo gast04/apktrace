@@ -92,28 +92,18 @@ impl Connection {
         */
 
         let packet_len: u32 = (data.len() as u32) + HEADER_LEN as u32;
-        let plen_vec = packet_len.to_be_bytes();
-
-        // convert packet id to be_bytes
         let packet_id = self.packet_id;
-        let pid_vec = packet_id.to_be_bytes();
 
         // specify capacity does not set length of vector
         let mut packet: Vec<u8> = Vec::with_capacity(packet_len as usize);
 
         // fill packet vector
-        for i in 0..4 {
-            packet.push(plen_vec[i]);
-        }
-        for i in 0..4 {
-            packet.push(pid_vec[i]);
-        }
+        packet.extend_from_slice(&packet_len.to_be_bytes());
+        packet.extend_from_slice(&packet_id.to_be_bytes());
         packet.push(0); // flags
         packet.push(cmd_sig.0); // cmd set
         packet.push(cmd_sig.1); // cmd
-        for i in 0..data.len() {
-            packet.push(data[i]);
-        }
+        packet.extend_from_slice(data);
 
         // TODO: pretty print final packet
         self.dbg_print(&format!("Final Packet: {:?}", packet));
@@ -262,17 +252,15 @@ impl Connection {
             return Ok(data_buffer);
         }
 
-        loop {
-            let (pkt_header, data_buffer) = self.read_packet()?;
-            if !Self::is_reply(&pkt_header) {
-                return Ok(data_buffer);
-            }
-
-            return Err(format!(
-                "Unexpected reply packet {} while waiting for an event",
-                pkt_header.id
-            ));
+        let (pkt_header, data_buffer) = self.read_packet()?;
+        if !Self::is_reply(&pkt_header) {
+            return Ok(data_buffer);
         }
+
+        Err(format!(
+            "Unexpected reply packet {} while waiting for an event",
+            pkt_header.id
+        ))
     }
 
     pub fn read_reply_buffer(&mut self, expected_id: u32) -> Result<Vec<u8>, String> {

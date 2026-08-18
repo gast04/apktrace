@@ -32,14 +32,13 @@ pub struct JdwpClient {
 // add functions to the struct
 impl JdwpClient {
     pub fn new(host: &str, port: u16, verbose: bool) -> Result<Self, String> {
-        let res = Conn::new(host, port, verbose);
-        if let Err(e) = res {
+        let con = Conn::new(host, port, verbose).map_err(|e| {
             println!("[JdpwClient] Could not connect to server: {}", e);
-            return Err(e);
-        }
-        let con = res.unwrap();
-        return Ok(JdwpClient {
-            con: con,
+            e
+        })?;
+
+        Ok(JdwpClient {
+            con,
             idsizes: utils::IdSizes::new(),
             classes: class::Classes::new(),
             methods: method::Methods::new(),
@@ -47,8 +46,8 @@ impl JdwpClient {
             created_events: Vec::new(),
             version: utils::Version::new(),
             tracer: tracer::Tracer::new(),
-            verbose: verbose,
-        });
+            verbose,
+        })
     }
 
     fn dbg_print(&self, msg: &str) {
@@ -275,26 +274,43 @@ impl JdwpClient {
         Ok(())
     }
 
+    fn register_method_event(
+        &mut self,
+        event_kind: u8,
+        class_pattern: Option<&str>,
+        suspend_policy: u8,
+    ) -> Result<(), String> {
+        let request_id = match class_pattern {
+            Some(pattern) => {
+                event::class_match_event(&mut self.con, pattern, event_kind, suspend_policy)?
+            }
+            None => event::class_exclude_event(&mut self.con, event_kind, suspend_policy)?,
+        };
+        self.created_events.push((event_kind, request_id));
+        Ok(())
+    }
+
     pub fn evt_entry_class_match(
         &mut self,
         class_pattern: &str,
         suspend_policy: u8,
     ) -> Result<(), String> {
         self.dbg_print("evt_entry_class_match");
-
-        let e_kind = pvars::EVENT_METHOD_ENTRY;
-        let r_id = event::class_match_event(&mut self.con, &class_pattern, e_kind, suspend_policy)?;
-        self.created_events.push((e_kind, r_id));
-        Ok(())
+        self.register_method_event(
+            pvars::EVENT_METHOD_ENTRY,
+            Some(class_pattern),
+            suspend_policy,
+        )
     }
 
     pub fn evt_entry_class_exclude(&mut self, suspend_policy: u8) -> Result<(), String> {
         self.dbg_print("evt_entry_class_exclude");
+        self.register_method_event(pvars::EVENT_METHOD_ENTRY, None, suspend_policy)
+    }
 
-        let e_kind = pvars::EVENT_METHOD_ENTRY;
-        let r_id = event::class_exclude_event(&mut self.con, e_kind, suspend_policy)?;
-        self.created_events.push((e_kind, r_id));
-        Ok(())
+    pub fn evt_exit_wrv_class_exclude(&mut self, suspend_policy: u8) -> Result<(), String> {
+        self.dbg_print("evt_exit_wrv_class_exclude");
+        self.register_method_event(pvars::EVENT_METHOD_EXIT_WRV, None, suspend_policy)
     }
 
     pub fn evt_exit_wrv_class_match(
@@ -303,20 +319,11 @@ impl JdwpClient {
         suspend_policy: u8,
     ) -> Result<(), String> {
         self.dbg_print("evt_exit_wrv_class_match");
-
-        let e_kind = pvars::EVENT_METHOD_EXIT_WRV;
-        let r_id = event::class_match_event(&mut self.con, &class_pattern, e_kind, suspend_policy)?;
-        self.created_events.push((e_kind, r_id));
-        Ok(())
-    }
-
-    pub fn evt_exit_wrv_class_exclude(&mut self, suspend_policy: u8) -> Result<(), String> {
-        self.dbg_print("evt_exit_wrv_class_exclude");
-
-        let e_kind = pvars::EVENT_METHOD_EXIT_WRV;
-        let r_id = event::class_exclude_event(&mut self.con, e_kind, suspend_policy)?;
-        self.created_events.push((e_kind, r_id));
-        Ok(())
+        self.register_method_event(
+            pvars::EVENT_METHOD_EXIT_WRV,
+            Some(class_pattern),
+            suspend_policy,
+        )
     }
 
     pub fn wait_for_event(&mut self, allow_jdwp_lookups: bool) -> Result<usize, String> {

@@ -2,15 +2,9 @@ use super::pvars;
 use super::utils;
 use std::collections::{HashMap, HashSet};
 
-// chain of modules, starting from root directory
 use crate::jdwp_handler::jdwp_client::connection::Connection as Conn;
-// a module should be only defined once, otherwise casts between
-// the two different modules are not allowed
-// which makes sense as it can be different modules just with the
-// same name
 
-//use crate::jdwp_handler::jdwp_client::JdwpClient as Jclient;
-
+#[derive(Clone)]
 pub struct Method {
     pub ref_type_id: u64, // either u32 or u64
     pub method_id: u64,
@@ -22,7 +16,7 @@ pub struct Method {
 }
 impl Method {
     pub fn new() -> Self {
-        return Method {
+        Method {
             ref_type_id: 0, // class_id
             method_id: 0,
             name: "unknown".to_string(),
@@ -30,7 +24,7 @@ impl Method {
             modbits: 0,
             ret_void: true,
             native: false,
-        };
+        }
     }
 
     pub fn print(&self) {
@@ -42,17 +36,6 @@ impl Method {
         println!("  Modbits:     {}", self.modbits);
         println!("  Native:      {}", self.native);
     }
-    pub fn copy(&self) -> Method {
-        return Method {
-            ref_type_id: self.ref_type_id,
-            method_id: self.method_id,
-            name: self.name.clone(),
-            signature: self.signature.clone(),
-            modbits: self.modbits,
-            ret_void: self.ret_void,
-            native: self.native,
-        };
-    }
 }
 
 pub struct Methods {
@@ -62,11 +45,11 @@ pub struct Methods {
 }
 impl Methods {
     pub fn new() -> Self {
-        return Methods {
+        Methods {
             vec: Vec::new(),
             by_id: HashMap::new(),
             fetched_classes: HashSet::new(),
-        };
+        }
     }
 
     pub fn push(&mut self, method: Method) {
@@ -90,7 +73,7 @@ impl Methods {
     pub fn get_cached_by_id(&self, ref_type_id: u64, method_id: u64) -> Option<Method> {
         self.by_id
             .get(&(ref_type_id, method_id))
-            .map(|idx| self.vec[*idx].copy())
+            .map(|idx| self.vec[*idx].clone())
     }
 
     #[allow(dead_code)]
@@ -102,41 +85,20 @@ impl Methods {
     }
 }
 
-/*
-// class_id, method_id
-pub fn fetch_methods_packet(obj_id_size: u32,
-        meth_id_size: u32,
-        ref_type_id: u64) -> Vec<u8> {
-
-  // fill data with class_id from which we wanna fetch all methods
-  let mut data: Vec<u8> = Vec::new();
-  let rti_vec = ref_type_id.to_be_bytes();
-  if obj_id_size == 4 {
-    for i in 0..4 { data.push(rti_vec[i]); }
-  }
-  else {
-    for i in 0..8 { data.push(rti_vec[i]); }
-  }
-
-  return data;
-}
-*/
-
 fn parse_method(buffer: &[u8], rti: u64, m_id_size: u32) -> Option<(Method, usize)> {
     let mut it: usize = 0;
 
-    let method_id: u64;
-    if m_id_size == 4 {
+    let method_id = if m_id_size == 4 {
         if buffer.len() < it + 4 {
             return None;
         }
-        method_id = utils::slice_to_u32(&buffer[it..it + 4]) as u64;
+        utils::slice_to_u32(&buffer[it..it + 4]) as u64
     } else {
         if buffer.len() < it + 8 {
             return None;
         }
-        method_id = utils::slice_to_u64(&buffer[it..it + 8]);
-    }
+        utils::slice_to_u64(&buffer[it..it + 8])
+    };
     it += m_id_size as usize;
 
     if buffer.len() < it + 4 {
@@ -157,15 +119,15 @@ fn parse_method(buffer: &[u8], rti: u64, m_id_size: u32) -> Option<(Method, usiz
     let modbits = utils::slice_to_u32(&buffer[it..it + 4]);
     it += 4;
 
-    let ret_void = signature.as_bytes().last().map_or(true, |&b| b == 86);
+    let ret_void = signature.as_bytes().last().is_none_or(|&b| b == 86);
 
     let method = Method {
         ref_type_id: rti,
-        method_id: method_id,
-        name: name,
-        signature: signature,
-        modbits: modbits,
-        ret_void: ret_void,
+        method_id,
+        name,
+        signature,
+        modbits,
+        ret_void,
         native: modbits & 0x0100 > 0,
     };
 

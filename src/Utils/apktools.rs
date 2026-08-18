@@ -1,10 +1,10 @@
 use std::process::Command;
 
 #[allow(dead_code)]
-pub fn start_application(package_id: &String, activity: &String) -> Result<bool, String> {
+pub fn start_application(package_id: &str, activity: &str) -> Result<bool, String> {
     println!("starting application");
 
-    let mut start_str: String = String::from(package_id);
+    let mut start_str = String::from(package_id);
     start_str.push('/');
     start_str.push_str(activity);
 
@@ -15,7 +15,7 @@ pub fn start_application(package_id: &String, activity: &String) -> Result<bool,
         .output()
         .expect("failed to execute process");
 
-    return Err("Hell no".to_string());
+    Err("Hell no".to_string())
 }
 
 pub fn get_pid_by_package(package_name: &str) -> Result<u64, String> {

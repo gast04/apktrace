@@ -11,6 +11,41 @@ mod jdwp_handler;
 #[path = "NativeLibTracer/native_lib_tracer.rs"]
 mod native_lib_tracer;
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum TraceMode {
+    ThreadSuspend,
+    LogOnly,
+}
+
+impl TraceMode {
+    fn from_log_only(log_only: bool) -> Self {
+        if log_only {
+            Self::LogOnly
+        } else {
+            Self::ThreadSuspend
+        }
+    }
+
+    fn suspend_policy(self) -> u8 {
+        match self {
+            Self::ThreadSuspend => jdwp_handler::SUSPEND_EVENT_THREAD,
+            Self::LogOnly => jdwp_handler::SUSPEND_NONE,
+        }
+    }
+
+    fn suspend_on_attach(self) -> bool {
+        self == Self::ThreadSuspend
+    }
+
+    fn allow_jdwp_lookups(self) -> bool {
+        self == Self::ThreadSuspend
+    }
+
+    fn is_log_only(self) -> bool {
+        self == Self::LogOnly
+    }
+}
+
 fn main() {
     println!("apktrace - JDWP Method Tracer & Performance Analyzer");
     println!("Press Ctrl+C to stop tracing and show summary\n");
@@ -93,11 +128,7 @@ fn main() {
         ap.parse_args_or_exit();
     }
 
-    let suspend_policy = if log_only {
-        jdwp_handler::SUSPEND_NONE
-    } else {
-        jdwp_handler::SUSPEND_EVENT_THREAD
-    };
+    let trace_mode = TraceMode::from_log_only(log_only);
 
     if list_processes {
         println!("Debuggable processes:");
@@ -139,12 +170,18 @@ fn main() {
 
     apktools::forward_jdwp(tcp_port, target_pid);
 
-    let res = jdwp_handler::init_connection("127.0.0.1", tcp_port as u16, verbose, !log_only);
-    if !res.is_ok() {
-        println!("Failed to connect to JDWP. Is the app running in debug mode?");
-        process::exit(-1);
-    }
-    let mut handler = res.unwrap();
+    let mut handler = match jdwp_handler::init_connection(
+        "127.0.0.1",
+        tcp_port as u16,
+        verbose,
+        trace_mode.suspend_on_attach(),
+    ) {
+        Ok(handler) => handler,
+        Err(_) => {
+            println!("Failed to connect to JDWP. Is the app running in debug mode?");
+            process::exit(-1);
+        }
+    };
 
     if !output_file.is_empty() {
         match jdwp_handler::set_log_file(&mut handler, &output_file) {
@@ -156,7 +193,7 @@ fn main() {
         }
     }
 
-    if log_only && !backtrace_file.is_empty() {
+    if trace_mode.is_log_only() && !backtrace_file.is_empty() {
         eprintln!("[apktrace] Warning: backtraces disabled in log-only mode");
     } else if !backtrace_file.is_empty() {
         match jdwp_handler::set_backtrace_file(&mut handler, &backtrace_file) {
@@ -191,7 +228,7 @@ fn main() {
         }
     }
 
-    if log_only {
+    if trace_mode.is_log_only() {
         if let Err(e) = jdwp_handler::warm_log_only_caches(&mut handler, &class_pattern) {
             eprintln!(
                 "[apktrace] Warning: failed to preload log-only caches: {}",
@@ -201,31 +238,39 @@ fn main() {
     }
 
     if class_pattern.is_empty() {
-        if let Err(e) = jdwp_handler::break_on_method_entry(&mut handler, "", suspend_policy) {
+        if let Err(e) =
+            jdwp_handler::break_on_method_entry(&mut handler, "", trace_mode.suspend_policy())
+        {
             println!("Failed to register METHOD_ENTRY event: {}", e);
             process::exit(-1);
         }
-        if let Err(e) = jdwp_handler::break_on_method_exit_wrv(&mut handler, "", suspend_policy) {
+        if let Err(e) =
+            jdwp_handler::break_on_method_exit_wrv(&mut handler, "", trace_mode.suspend_policy())
+        {
             println!("Failed to register METHOD_EXIT event: {}", e);
             process::exit(-1);
         }
     } else {
         println!("[apktrace] Tracing classes matching: {}", class_pattern);
-        if let Err(e) =
-            jdwp_handler::break_on_method_entry_match(&mut handler, &class_pattern, suspend_policy)
-        {
+        if let Err(e) = jdwp_handler::break_on_method_entry_match(
+            &mut handler,
+            &class_pattern,
+            trace_mode.suspend_policy(),
+        ) {
             println!("Failed to register METHOD_ENTRY event: {}", e);
             process::exit(-1);
         }
-        if let Err(e) =
-            jdwp_handler::break_on_method_exit_match(&mut handler, &class_pattern, suspend_policy)
-        {
+        if let Err(e) = jdwp_handler::break_on_method_exit_match(
+            &mut handler,
+            &class_pattern,
+            trace_mode.suspend_policy(),
+        ) {
             println!("Failed to register METHOD_EXIT event: {}", e);
             process::exit(-1);
         }
     }
 
-    if !log_only {
+    if trace_mode.suspend_on_attach() {
         if let Err(e) = jdwp_handler::resume_vm(&mut handler) {
             println!("Failed to resume VM: {}", e);
             process::exit(-1);
@@ -250,11 +295,11 @@ fn main() {
     const MAX_CONSECUTIVE_FAILURES: u32 = 3;
 
     while running.load(Ordering::SeqCst) {
-        match jdwp_handler::wait_for_event(&mut handler, !log_only) {
+        match jdwp_handler::wait_for_event(&mut handler, trace_mode.allow_jdwp_lookups()) {
             Ok(processed_events) => {
                 consecutive_failures = 0;
                 event_count += processed_events as u64;
-                if !log_only {
+                if trace_mode.suspend_on_attach() {
                     if let Err(e) = jdwp_handler::resume_vm(&mut handler) {
                         eprintln!("[apktrace] Failed to resume VM: {}", e);
                         break;
@@ -278,11 +323,7 @@ fn main() {
         let now = std::time::Instant::now();
         if now.duration_since(last_report).as_secs() >= 5 {
             let elapsed = now.duration_since(start_time).as_secs();
-            let rate = if elapsed > 0 {
-                event_count / elapsed
-            } else {
-                0
-            };
+            let rate = event_count.checked_div(elapsed).unwrap_or(0);
             eprintln!("[apktrace] {} events ({}/sec)", event_count, rate);
             last_report = now;
         }

@@ -12,16 +12,11 @@ pub struct JdwpHandler {
 
 impl JdwpHandler {
     pub fn new(host: &str, port: u16, verbose: bool) -> Result<Self, String> {
-        let res = jdwp_client::JdwpClient::new(host, port, verbose);
-        if let Err(e) = res {
+        let client = jdwp_client::JdwpClient::new(host, port, verbose).map_err(|e| {
             println!("[JdwpHandler] Could not create Client: {}", e);
-            return Err(e);
-        }
-        let client = res.unwrap();
-        return Ok(JdwpHandler {
-            client: client,
-            verbose: verbose,
-        });
+            e
+        })?;
+        Ok(JdwpHandler { client, verbose })
     }
 }
 
@@ -61,7 +56,7 @@ pub fn init_connection(
         _handler.client.classes.vec.len()
     );
 
-    return Ok(_handler);
+    Ok(_handler)
 }
 
 pub fn break_on_method_entry(

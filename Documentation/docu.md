@@ -27,14 +27,14 @@ Every JDWP packet has an 11-byte header. There are two packet types — **comman
 ```
 Command packet:
   ┌──────────────────┬──────────────┬───────┬─────────────┬─────────┬──────┐
-  │ length (4 bytes)  │ id (4 bytes) │ flags │ command set │ command │ data │
-  │     u32 BE        │   u32 BE     │  0x00 │    u8       │   u8    │ ...  │
+  │ length (4 bytes) │ id (4 bytes) │ flags │ command set │ command │ data │
+  │     u32 BE       │   u32 BE     │  0x00 │    u8       │   u8    │ ...  │
   └──────────────────┴──────────────┴───────┴─────────────┴─────────┴──────┘
 
 Reply packet:
   ┌──────────────────┬──────────────┬───────┬────────────────┬──────┐
-  │ length (4 bytes)  │ id (4 bytes) │ flags │ error (2 bytes)│ data │
-  │     u32 BE        │   u32 BE     │  0x80 │    u16 BE      │ ...  │
+  │ length (4 bytes) │ id (4 bytes) │ flags │ error (2 bytes)│ data │
+  │     u32 BE       │   u32 BE     │  0x80 │    u16 BE      │ ...  │
   └──────────────────┴──────────────┴───────┴────────────────┴──────┘
 ```
 

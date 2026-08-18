@@ -14,13 +14,13 @@ pub struct IdSizes {
 }
 impl IdSizes {
     pub fn new() -> Self {
-        return IdSizes {
+        IdSizes {
             field_id_size: 0,
             method_id_size: 0,
             object_id_size: 0,
             reference_type_id_size: 0,
             frame_id_size: 0,
-        };
+        }
     }
 
     pub fn print(&self) {
@@ -42,13 +42,13 @@ pub struct Version {
 }
 impl Version {
     pub fn new() -> Self {
-        return Version {
+        Version {
             description: "".to_string(),
             major: 0,
             minor: 0,
             vm_version: "".to_string(),
             vm_name: "".to_string(),
-        };
+        }
     }
     pub fn print(&self) {
         println!("Version:");
@@ -91,11 +91,11 @@ impl Threads {
 }
 
 pub fn slice_to_u32(slice: &[u8]) -> u32 {
-    return u32::from_be_bytes(slice.try_into().unwrap());
+    u32::from_be_bytes(slice.try_into().unwrap())
 }
 
 pub fn slice_to_u64(slice: &[u8]) -> u64 {
-    return u64::from_be_bytes(slice.try_into().unwrap());
+    u64::from_be_bytes(slice.try_into().unwrap())
 }
 
 pub fn parse_string(buffer: &[u8]) -> String {
@@ -116,16 +116,12 @@ pub fn parse_string(buffer: &[u8]) -> String {
 
 pub fn append_u32(buffer: &mut Vec<u8>, value: u32) {
     let mods_vec = value.to_be_bytes();
-    for i in 0..4 {
-        buffer.push(mods_vec[i]);
-    }
+    buffer.extend_from_slice(&mods_vec);
 }
 
 pub fn append_u64(buffer: &mut Vec<u8>, value: u64) {
     let mods_vec = value.to_be_bytes();
-    for i in 0..8 {
-        buffer.push(mods_vec[i]);
-    }
+    buffer.extend_from_slice(&mods_vec);
 }
 
 pub fn append_string(buffer: &mut Vec<u8>, class_pattern: &str) {
@@ -189,7 +185,7 @@ pub fn parse_version(buffer: &[u8]) -> Result<Version, String> {
 
     let mut version = Version::new();
     let (desc, mut it) = parse_string_field(buffer)?;
-    version.description = desc.clone();
+    version.description = desc;
 
     if buffer.len() < it + 8 {
         return Err("Version reply was too short for major/minor fields".to_string());
@@ -199,11 +195,11 @@ pub fn parse_version(buffer: &[u8]) -> Result<Version, String> {
     it += 8;
 
     let (vm_version, consumed) = parse_string_field(&buffer[it..])?;
-    version.vm_version = vm_version.clone();
+    version.vm_version = vm_version;
     it += consumed;
 
     let (vm_name, _) = parse_string_field(&buffer[it..])?;
-    version.vm_name = vm_name.clone();
+    version.vm_name = vm_name;
 
     Ok(version)
 }

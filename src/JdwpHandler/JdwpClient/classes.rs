@@ -12,12 +12,12 @@ pub struct Class {
 }
 impl Class {
     pub fn new() -> Self {
-        return Class {
+        Class {
             ref_type_tag: 0,
             ref_type_id: 0,
             signature: "".to_string(),
             status: 0,
-        };
+        }
     }
     #[allow(dead_code)]
     pub fn print(&self) {
@@ -35,10 +35,10 @@ pub struct Classes {
 }
 impl Classes {
     pub fn new() -> Self {
-        return Classes {
+        Classes {
             vec: Vec::new(),
             by_id: HashMap::new(),
-        };
+        }
     }
 
     pub fn clear(&mut self) {

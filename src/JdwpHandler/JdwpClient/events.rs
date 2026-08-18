@@ -130,13 +130,13 @@ fn parse_event(
 
     let event = Event {
         kind: event_kind,
-        request_id: request_id,
-        thread_id: thread_id,
-        type_tag: type_tag,
-        class_id: class_id,
-        method_id: method_id,
+        request_id,
+        thread_id,
+        type_tag,
+        class_id,
+        method_id,
         location: loc_index,
-        retval: retval,
+        retval,
     };
 
     Some((event, it))
@@ -149,7 +149,7 @@ pub fn parse_event_response(
     method_id_size: u32,
 ) -> Response {
     let mut response = Response {
-        suspend_policy: if buffer.len() > 0 { buffer[0] } else { 0 },
+        suspend_policy: if !buffer.is_empty() { buffer[0] } else { 0 },
         events: Vec::new(),
     };
 
@@ -174,7 +174,7 @@ pub fn parse_event_response(
         }
     }
 
-    return response;
+    response
 }
 
 pub fn class_match_event(

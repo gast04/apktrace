@@ -142,7 +142,7 @@ impl Tracer {
             child_time_us: 0,
         };
 
-        let stack = self.call_stacks.entry(thread_id).or_insert_with(Vec::new);
+        let stack = self.call_stacks.entry(thread_id).or_default();
         stack.push(call);
         stack.len()
     }
@@ -215,7 +215,7 @@ impl Tracer {
         let self_total: u64 = stats_vec.iter().map(|s| s.self_time_us).sum();
         let self_total_f = self_total as f64;
 
-        stats_vec.sort_by(|a, b| b.self_time_us.cmp(&a.self_time_us));
+        stats_vec.sort_by_key(|stats| std::cmp::Reverse(stats.self_time_us));
 
         println!(
             "{:>7} {:>10} {:>10} {:>10} {:>10} {:>10}  {}",
